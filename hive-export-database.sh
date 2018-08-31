@@ -4,15 +4,7 @@
 # TODO: handle kerberos
 # TODO: handle permissions
 
-# $1=argument name
-# $2=variable
-check_arg() {
-	if [ -z "$2" ]; then
-		echo "ERROR: $1 was not defined"
-		echo "$usage"
-		exit 1
-	fi
-}
+source common.sh
 
 usage="$(basename "$0") [-h] [--database string] [--export-hdfs-path string]
 

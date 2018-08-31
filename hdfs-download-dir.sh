@@ -1,0 +1,115 @@
+#!/bin/bash
+# Author: gerasimos
+# https://github.com/gerasimos
+
+source common.sh
+
+# $1=the file to keep
+# $2=the final file path
+# NOTE! $2 will be deleted if exists!
+safe_replace_file() {
+	mv ${2} ${2}.bak || killme "Could not move ${2} to ${2}.bak"
+	mv ${1} ${2} || killme "Could not move ${1} to ${2}"
+	rm ${2}.bak || killme "Could not delete ${2}.bak"
+}
+
+usage="$(basename "$0") [-h] [--hdfs-dir string] [--local-dir string] [--md5]
+
+where:
+	$(color blue)-h, --help$(color),	shows this help text
+	$(color blue)--hdfs-dir string$(color),	the HDFS directory to download from
+	$(color blue)--local-dir string$(color),	the local directory to download to
+	$(color blue)--md5$(color),	if set, it compares the md5sum of each downloaded file with the HDFS one. $(color red)Can be very slow!$(color). If not set, only file size comparison if performed.
+"
+
+while [ "$1" != "" ]; do
+	case $1 in
+		-h|--help) echo "$usage"; exit 1
+			;;
+		--hdfs-dir) shift
+			HDFS_DIR=$1
+			# Add / at the end of the path if not exists
+			if [ "${HDFS_DIR: -1}" != "/" ]; then
+				HDFS_DIR="${HDFS_DIR}/"
+			fi
+			;;
+		--local-dir) shift
+			LOCAL_DIR=$1
+			;;
+		--md5)
+			MD5_SUM=1
+			;;
+	esac
+	shift
+done
+
+check_argument "--hdfs-dir" "$HDFS_DIR"
+check_argument "--local-dir" "$LOCAL_DIR"
+
+# Main
+hdfsDirListFile="~hdfs-dir-list.txt"
+localValidationFile="~validation.txt"
+statusFile="~status.txt"
+
+mkdir -p ${LOCAL_DIR}
+rm ${LOCAL_DIR}/${hdfsDirListFile} 2>/dev/null
+rm ${LOCAL_DIR}/${localValidationFile} 2>/dev/null
+
+echo "$(color blue)Getting file listing of ${HDFS_DIR} in ${LOCAL_DIR}/${hdfsDirListFile}...$(color)"
+hdfs dfs -ls -R ${HDFS_DIR} > ${LOCAL_DIR}/${hdfsDirListFile}.tmp
+tail -n +2 ${LOCAL_DIR}/${hdfsDirListFile}.tmp | sed -e 's/  */ /g' >> ${LOCAL_DIR}/${hdfsDirListFile}
+rm ${LOCAL_DIR}/${hdfsDirListFile}.tmp
+
+# Process hdfsDirListFile
+while read permissions level user group size datee timee path; do
+	pathDir=$(echo $path | sed -r -e "s;(.*)/(.*);\1;")
+	pathFile=$(echo $path | sed -r -e "s;(.*)/(.*);\2;")
+	relativePath=$(echo $path | sed -r -e "s;.*/(.*)/${pathFile};\1;")
+	fileType=${permissions:0:1}
+	echo "$fileType $pathDir $relativePath $pathFile $size" >> ${LOCAL_DIR}/${hdfsDirListFile}.tmp
+done < ${LOCAL_DIR}/${hdfsDirListFile}
+
+safe_replace_file ${LOCAL_DIR}/${hdfsDirListFile}.tmp ${LOCAL_DIR}/${hdfsDirListFile}
+
+if [ $MD5_SUM ]; then
+	while read fileType hdfsDir relativePath filename size; do
+		md5=0
+		if [ "$fileType" == "-" ]; then
+			# printf "MD5(${hdfsDir}/${filename})..."
+			md5=$(hdfs dfs -cat "${hdfsDir}/${filename}" | md5sum | cut -d' ' -f1)
+			# printf "${md5}\n"
+		fi
+		echo "$fileType $hdfsDir $relativePath $filename $size $md5" >> ${LOCAL_DIR}/${hdfsDirListFile}.tmp
+	done < ${LOCAL_DIR}/${hdfsDirListFile}
+
+	safe_replace_file ${LOCAL_DIR}/${hdfsDirListFile}.tmp ${LOCAL_DIR}/${hdfsDirListFile}
+fi
+
+echo "$(color blue)Download directory ${HDFS_DIR} in ${LOCAL_DIR}/...$(color)"
+hdfs dfs -get ${HDFS_DIR} ${LOCAL_DIR}
+
+echo "$(color blue)Validate ${LOCAL_DIR}/...$(color)"
+while read fileType hdfsDir relativePath filename size md5; do
+	if [ "$fileType" == "-" ]; then
+		local_size=$(du -b "${LOCAL_DIR}/${relativePath}/${filename}" | cut -f1)
+		if [ "$size" -ne "$local_size" ]; then
+			echo "$(color red)ERROR: failed to validate size on $hdfsDir/$filename$(color): $size != $local_size"
+		fi
+
+		if [ $MD5_SUM ]; then
+			local_md5=$(md5sum "${LOCAL_DIR}/${relativePath}/${filename}" | cut -d' ' -f1)
+			if [ "$md5" != "$local_md5" ]; then
+				echo "$(color red)ERROR: failed to validate MD5 on $hdfsDir/$filename$(color)"
+			fi
+		fi
+		echo "$hdfsDir/$filename $size $local_size $md5 $local_md5" >> ${LOCAL_DIR}/${localValidationFile}
+		
+	elif [ ! -d "${LOCAL_DIR}/${relativePath}/${filename}" ]; then
+		echo "$(color red)ERROR: failed to validate directory $hdfsDir/$filename$(color)"
+	elif [ -d "${LOCAL_DIR}/${relativePath}/${filename}" ]; then
+		echo "$hdfsDir/$filename $size - $md5 -" >> ${LOCAL_DIR}/${localValidationFile}
+	fi
+done < ${LOCAL_DIR}/${hdfsDirListFile}
+
+echo "Done!"
+
