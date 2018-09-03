@@ -92,7 +92,7 @@ while [[ "$loopDate" < "$END_DATE" || "$loopDate" == "$END_DATE" ]]; do
 	echo "arguments to call ./$SCRIPT: ${args[@]}"
 
 	# run child script
-	./$SCRIPT ${args[@]} || killme "ERROR calling $SCRIPT"
+	./$SCRIPT ${args[@]} || killme "$(basename "$0"): ERROR calling $SCRIPT"
 
 	echo "$(color blue)==>$(color) $loopDate OK"
 
