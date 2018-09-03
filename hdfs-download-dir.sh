@@ -24,21 +24,31 @@ where:
 
 while [ "$1" != "" ]; do
 	case $1 in
-		-h|--help) echo "$usage"; exit 1
+		-h|--help) 
+			echo "usage: $usage"; exit 1
 			;;
-		--hdfs-dir) shift
+		--hdfs-dir) 
+			shift
 			HDFS_DIR=$1
 			# Add / at the end of the path if not exists
 			if [ "${HDFS_DIR: -1}" != "/" ]; then
 				HDFS_DIR="${HDFS_DIR}/"
 			fi
 			;;
-		--local-dir) shift
+		--local-dir) 
+			shift
 			LOCAL_DIR=$1
+			# Add / at the end of the path if not exists
+			if [ "${LOCAL_DIR: -1}" != "/" ]; then
+				LOCAL_DIR="${LOCAL_DIR}/"
+			fi
 			;;
 		--md5)
 			MD5_SUM=1
 			;;
+		*) 
+			echo "ERROR: Unknown option $*."
+			echo "usage: $usage"; exit 1
 	esac
 	shift
 done
@@ -52,13 +62,13 @@ localValidationFile="~validation.txt"
 statusFile="~status.txt"
 
 mkdir -p ${LOCAL_DIR}
-rm ${LOCAL_DIR}/${hdfsDirListFile} 2>/dev/null
-rm ${LOCAL_DIR}/${localValidationFile} 2>/dev/null
+rm ${LOCAL_DIR}${hdfsDirListFile} 2>/dev/null
+rm ${LOCAL_DIR}${localValidationFile} 2>/dev/null
 
-echo "$(color blue)Getting file listing of ${HDFS_DIR} in ${LOCAL_DIR}/${hdfsDirListFile}...$(color)"
-hdfs dfs -ls -R ${HDFS_DIR} > ${LOCAL_DIR}/${hdfsDirListFile}.tmp
-tail -n +2 ${LOCAL_DIR}/${hdfsDirListFile}.tmp | sed -e 's/  */ /g' >> ${LOCAL_DIR}/${hdfsDirListFile}
-rm ${LOCAL_DIR}/${hdfsDirListFile}.tmp
+echo "$(color blue)Getting file listing of ${HDFS_DIR} in ${LOCAL_DIR}${hdfsDirListFile}...$(color)"
+hdfs dfs -ls -R ${HDFS_DIR} > ${LOCAL_DIR}${hdfsDirListFile}.tmp
+tail -n +2 ${LOCAL_DIR}${hdfsDirListFile}.tmp | sed -e 's/  */ /g' >> ${LOCAL_DIR}${hdfsDirListFile}
+rm ${LOCAL_DIR}${hdfsDirListFile}.tmp
 
 # Process hdfsDirListFile
 while read permissions level user group size datee timee path; do
@@ -66,10 +76,10 @@ while read permissions level user group size datee timee path; do
 	pathFile=$(echo $path | sed -r -e "s;(.*)/(.*);\2;")
 	relativePath=$(echo $path | sed -r -e "s;.*/(.*)/${pathFile};\1;")
 	fileType=${permissions:0:1}
-	echo "$fileType $pathDir $relativePath $pathFile $size" >> ${LOCAL_DIR}/${hdfsDirListFile}.tmp
-done < ${LOCAL_DIR}/${hdfsDirListFile}
+	echo "$fileType $pathDir $relativePath $pathFile $size" >> ${LOCAL_DIR}${hdfsDirListFile}.tmp
+done < ${LOCAL_DIR}${hdfsDirListFile}
 
-safe_replace_file ${LOCAL_DIR}/${hdfsDirListFile}.tmp ${LOCAL_DIR}/${hdfsDirListFile}
+safe_replace_file ${LOCAL_DIR}${hdfsDirListFile}.tmp ${LOCAL_DIR}${hdfsDirListFile}
 
 if [ $MD5_SUM ]; then
 	while read fileType hdfsDir relativePath filename size; do
@@ -79,37 +89,37 @@ if [ $MD5_SUM ]; then
 			md5=$(hdfs dfs -cat "${hdfsDir}/${filename}" | md5sum | cut -d' ' -f1)
 			# printf "${md5}\n"
 		fi
-		echo "$fileType $hdfsDir $relativePath $filename $size $md5" >> ${LOCAL_DIR}/${hdfsDirListFile}.tmp
-	done < ${LOCAL_DIR}/${hdfsDirListFile}
+		echo "$fileType $hdfsDir $relativePath $filename $size $md5" >> ${LOCAL_DIR}${hdfsDirListFile}.tmp
+	done < ${LOCAL_DIR}${hdfsDirListFile}
 
-	safe_replace_file ${LOCAL_DIR}/${hdfsDirListFile}.tmp ${LOCAL_DIR}/${hdfsDirListFile}
+	safe_replace_file ${LOCAL_DIR}${hdfsDirListFile}.tmp ${LOCAL_DIR}${hdfsDirListFile}
 fi
 
-echo "$(color blue)Download directory ${HDFS_DIR} in ${LOCAL_DIR}/...$(color)"
+echo "$(color blue)Download directory ${HDFS_DIR} in ${LOCAL_DIR}...$(color)"
 hdfs dfs -get ${HDFS_DIR} ${LOCAL_DIR}
 
-echo "$(color blue)Validate ${LOCAL_DIR}/...$(color)"
+echo "$(color blue)Validate ${LOCAL_DIR}...$(color)"
 while read fileType hdfsDir relativePath filename size md5; do
 	if [ "$fileType" == "-" ]; then
-		local_size=$(du -b "${LOCAL_DIR}/${relativePath}/${filename}" | cut -f1)
+		local_size=$(du -b "${LOCAL_DIR}${relativePath}/${filename}" | cut -f1)
 		if [ "$size" -ne "$local_size" ]; then
-			echo "$(color red)ERROR: failed to validate size on $hdfsDir/$filename$(color): $size != $local_size"
+			killme "Failed to validate size on $hdfsDir/$filename: $size != $local_size"
 		fi
 
 		if [ $MD5_SUM ]; then
-			local_md5=$(md5sum "${LOCAL_DIR}/${relativePath}/${filename}" | cut -d' ' -f1)
+			local_md5=$(md5sum "${LOCAL_DIR}${relativePath}/${filename}" | cut -d' ' -f1)
 			if [ "$md5" != "$local_md5" ]; then
-				echo "$(color red)ERROR: failed to validate MD5 on $hdfsDir/$filename$(color)"
+				killme "Failed to validate MD5 on $hdfsDir/$filename"
 			fi
 		fi
-		echo "$hdfsDir/$filename $size $local_size $md5 $local_md5" >> ${LOCAL_DIR}/${localValidationFile}
+		echo "$hdfsDir/$filename $size $local_size $md5 $local_md5" >> ${LOCAL_DIR}${localValidationFile}
 		
-	elif [ ! -d "${LOCAL_DIR}/${relativePath}/${filename}" ]; then
-		echo "$(color red)ERROR: failed to validate directory $hdfsDir/$filename$(color)"
-	elif [ -d "${LOCAL_DIR}/${relativePath}/${filename}" ]; then
-		echo "$hdfsDir/$filename $size - $md5 -" >> ${LOCAL_DIR}/${localValidationFile}
+	elif [ ! -d "${LOCAL_DIR}${relativePath}/${filename}" ]; then
+		killme "Failed to validate directory $hdfsDir/$filename"
+	elif [ -d "${LOCAL_DIR}${relativePath}/${filename}" ]; then
+		echo "$hdfsDir/$filename $size - $md5 -" >> ${LOCAL_DIR}${localValidationFile}
 	fi
-done < ${LOCAL_DIR}/${hdfsDirListFile}
+done < ${LOCAL_DIR}${hdfsDirListFile}
 
 echo "Done!"
 
