@@ -8,14 +8,12 @@ usage="$(basename "$0") [-h] <OPTIONS>
 
 where <OPTIONS>:
 	$(color green)-h, --help$(color),	shows this help text
+	$(color green)--local-dir string$(color),	the local directory to upload from
 	$(color green)--database string$(color),	the Hive database
 	$(color green)--table string$(color),	the Hive table
 	$(color green)--partition-by string$(color),	the partition key
 	$(color green)--partition-value string$(color),	the partition value
 	$(color green)--hive-warehouse string$(color),	the HDFS Hive warehouse directory
-	$(color green)--local-dir string$(color),	the local directory to download to
-	$(color green)--md5$(color),	if set, it compares the md5sum of each downloaded file with the HDFS one. $(color red)Can be very slow!$(color). If not set, only file size comparison if performed.
-	$(color green)--zip$(color),	if set, it compress the local-dir using tar.
 "
 
 while [ "$1" != "" ]; do
@@ -49,14 +47,12 @@ while [ "$1" != "" ]; do
 		--local-dir) 
 			shift
 			LOCAL_DIR=$1
+			# Add / at the end of the path if not exists
+			if [ "${LOCAL_DIR: -1}" != "/" ]; then
+				LOCAL_DIR="${LOCAL_DIR}/"
+			fi
 			;;
-		--md5)
-			MD5_SUM=1
-			;;
-		--zip)
-			ZIPPER=1
-			;;
-		*)
+		*) 
 			echo "ERROR: Unknown option $*."
 			echo "usage: $usage"; exit 1
 	esac
@@ -70,18 +66,8 @@ check_argument "--partition-value" "$PARTITION_VALUE"
 check_argument "--hive-warehouse" "$HIVE_WARESHOUSE"
 check_argument "--local-dir" "$LOCAL_DIR"
 
-useMD5=""
-if [ $MD5_SUM ]; then
-	useMD5="--md5"
-fi
+echo "$(color green)==>$(color) Upload ${LOCAL_DIR}${PARTITION_BY}=${PARTITION_VALUE} --> ${HIVE_WARESHOUSE}${DATABASE}.db/${TABLE}/..."
 
-rm -rf {LOCAL_DIR}/${PARTITION_BY}=${PARTITION_VALUE}
+hdfs dfs -put ${LOCAL_DIR}${PARTITION_BY}=${PARTITION_VALUE} ${HIVE_WARESHOUSE}${DATABASE}.db/${TABLE}/ || killme "Failed to hdfs"
 
-eval ./hdfs-download-dir.sh --hdfs-dir ${HIVE_WARESHOUSE}${DATABASE}.db/${TABLE}/${PARTITION_BY}=${PARTITION_VALUE} --local-dir ${LOCAL_DIR} $useMD5 || killme "Failed executing hdfs-download-dir.sh"
-
-if [ $ZIPPER ]; then
-
-	tar -zcvf ${LOCAL_DIR}/${PARTITION_BY}=${PARTITION_VALUE}.tar.gz ${LOCAL_DIR}/${PARTITION_BY}=${PARTITION_VALUE} || killme "Failed to tar ${LOCAL_DIR}/${PARTITION_BY}=${PARTITION_VALUE}"
-
-	rm -rf ${LOCAL_DIR}/${PARTITION_BY}=${PARTITION_VALUE}
-fi
+echo "Done!"

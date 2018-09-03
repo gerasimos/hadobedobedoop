@@ -16,10 +16,10 @@ safe_replace_file() {
 usage="$(basename "$0") [-h] [--hdfs-dir string] [--local-dir string] [--md5]
 
 where:
-	$(color blue)-h, --help$(color),	shows this help text
-	$(color blue)--hdfs-dir string$(color),	the HDFS directory to download from
-	$(color blue)--local-dir string$(color),	the local directory to download to
-	$(color blue)--md5$(color),	if set, it compares the md5sum of each downloaded file with the HDFS one. $(color red)Can be very slow!$(color). If not set, only file size comparison if performed.
+	$(color green)-h, --help$(color),	shows this help text
+	$(color green)--hdfs-dir string$(color),	the HDFS directory to download from
+	$(color green)--local-dir string$(color),	the local directory to download to
+	$(color green)--md5$(color),	if set, it compares the md5sum of each downloaded file with the HDFS one. $(color red)Can be very slow!$(color). If not set, only file size comparison if performed.
 "
 
 while [ "$1" != "" ]; do
@@ -61,16 +61,24 @@ hdfsDirListFile="~hdfs-dir-list.txt"
 localValidationFile="~validation.txt"
 statusFile="~status.txt"
 
+echo "$(color pine)Will download ${HDFS_DIR} to ${LOCAL_DIR}"
+
 mkdir -p ${LOCAL_DIR}
 rm ${LOCAL_DIR}${hdfsDirListFile} 2>/dev/null
 rm ${LOCAL_DIR}${localValidationFile} 2>/dev/null
 
-echo "$(color blue)Getting file listing of ${HDFS_DIR} in ${LOCAL_DIR}${hdfsDirListFile}...$(color)"
+echo "$(color green)Getting file listing of ${HDFS_DIR} in ${LOCAL_DIR}${hdfsDirListFile}...$(color)"
 hdfs dfs -ls -R ${HDFS_DIR} > ${LOCAL_DIR}${hdfsDirListFile}.tmp
-tail -n +2 ${LOCAL_DIR}${hdfsDirListFile}.tmp | sed -e 's/  */ /g' >> ${LOCAL_DIR}${hdfsDirListFile}
+# This tail should be +0 in case of partitionied data or +2 in general case
+# FIXME: Correct this tail
+tail -n +0 ${LOCAL_DIR}${hdfsDirListFile}.tmp | sed -e 's/  */ /g' >> ${LOCAL_DIR}${hdfsDirListFile}
 rm ${LOCAL_DIR}${hdfsDirListFile}.tmp
 
-# Process hdfsDirListFile
+if [ ! -f "${LOCAL_DIR}${hdfsDirListFile}" ]; then
+	killme "${LOCAL_DIR}${hdfsDirListFile} does not exist!"
+fi
+
+echo "$(color green)Processing ${LOCAL_DIR}${hdfsDirListFile}..."
 while read permissions level user group size datee timee path; do
 	pathDir=$(echo $path | sed -r -e "s;(.*)/(.*);\1;")
 	pathFile=$(echo $path | sed -r -e "s;(.*)/(.*);\2;")
@@ -82,6 +90,7 @@ done < ${LOCAL_DIR}${hdfsDirListFile}
 safe_replace_file ${LOCAL_DIR}${hdfsDirListFile}.tmp ${LOCAL_DIR}${hdfsDirListFile}
 
 if [ $MD5_SUM ]; then
+	echo "$(color green)MD5 calculation on HDFS files..."
 	while read fileType hdfsDir relativePath filename size; do
 		md5=0
 		if [ "$fileType" == "-" ]; then
@@ -92,13 +101,16 @@ if [ $MD5_SUM ]; then
 		echo "$fileType $hdfsDir $relativePath $filename $size $md5" >> ${LOCAL_DIR}${hdfsDirListFile}.tmp
 	done < ${LOCAL_DIR}${hdfsDirListFile}
 
+	if [ ! -f "${LOCAL_DIR}${hdfsDirListFile}.tmp" ]; then
+		killme "No ${LOCAL_DIR}${hdfsDirListFile}.tmp. Double check!"
+	fi
 	safe_replace_file ${LOCAL_DIR}${hdfsDirListFile}.tmp ${LOCAL_DIR}${hdfsDirListFile}
 fi
 
-echo "$(color blue)Download directory ${HDFS_DIR} in ${LOCAL_DIR}...$(color)"
+echo "$(color green)Download directory ${HDFS_DIR} in ${LOCAL_DIR}...$(color)"
 hdfs dfs -get ${HDFS_DIR} ${LOCAL_DIR}
 
-echo "$(color blue)Validate ${LOCAL_DIR}...$(color)"
+echo "$(color green)Validate ${LOCAL_DIR}...$(color)"
 while read fileType hdfsDir relativePath filename size md5; do
 	if [ "$fileType" == "-" ]; then
 		local_size=$(du -b "${LOCAL_DIR}${relativePath}/${filename}" | cut -f1)

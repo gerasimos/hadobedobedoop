@@ -7,12 +7,12 @@ source common.sh
 usage="$(basename "$0") [-h] <OPTIONS>
 
 where <OPTIONS>:
-	$(color blue)-h, --help$(color),	shows this help text
-	$(color blue)--from YYYY-MM-DD$(color),	the starting date to process (including)
-	$(color blue)--to YYYY-MM-DD$(color),	the ending date to process (including)
-	$(color blue)--script string$(color),	the script to execute per day
-	$(color blue)--date-as string$(color),	the argument name for date to pass to scrip. Default is 'date'
-	$(color blue)--varXXX string$(color),	defines variable XXX to pass to script
+	$(color green)-h, --help$(color),	shows this help text
+	$(color green)--from YYYY-MM-DD$(color),	the starting date to process (including)
+	$(color green)--to YYYY-MM-DD$(color),	the ending date to process (including)
+	$(color green)--script string$(color),	the script to execute per day
+	$(color green)--date-as string$(color),	the argument name for date to pass to scrip. Default is 'date'
+	$(color green)--varXXX string$(color),	defines variable XXX to pass to script
 "
 
 ARRAYIDX=0 VARS_NAME=() VARS_VALUE=()
@@ -20,14 +20,14 @@ FLAGSIDX=0 FLAGS=()
 DATE_AS="date"
 while [ "$1" != "" ]; do
 	case $1 in
-		-h|--help) 
+		-h|--help)
 			echo "usage: $usage"; exit 1
 			;;
-		--from) 
+		--from)
 			shift
 			START_DATE=$1
 			;;
-		--to) 
+		--to)
 			shift
 			END_DATE=$1
 			;;
@@ -45,6 +45,7 @@ while [ "$1" != "" ]; do
 			len=${#flag}
 			f=$(echo $1 | tail -c `expr $len - 5`)
 			FLAGS[FLAGSIDX]=$f
+			((++FLAGSIDX))
 			;;
 		--script)
 			shift
@@ -54,7 +55,7 @@ while [ "$1" != "" ]; do
 			shift
 			DATE_AS=$1
 			;;
-		*) 
+		*)
 			echo "ERROR: Unknown option $*."
 			echo "usage: $usage"; exit 1
 	esac
@@ -74,7 +75,7 @@ fi
 # Loop days
 loopDate=$START_DATE
 while [[ "$loopDate" < "$END_DATE" || "$loopDate" == "$END_DATE" ]]; do
-	echo "$(color blue)==>$(color) Processing $loopDate..."
+	echo "$(color green)==>$(color) Processing $loopDate..."
 
 	i=0 args=()
 	for nn in ${VARS_NAME[*]}; do
@@ -94,7 +95,7 @@ while [[ "$loopDate" < "$END_DATE" || "$loopDate" == "$END_DATE" ]]; do
 	# run child script
 	./$SCRIPT ${args[@]} || killme "$(basename "$0"): ERROR calling $SCRIPT"
 
-	echo "$(color blue)==>$(color) $loopDate OK"
+	echo "$(color green)==>$(color) $loopDate OK"
 
 	# Go to next date
 	loopDate=$(date -d "$loopDate +1 day" +"%Y-%m-%d")
